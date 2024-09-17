@@ -1,29 +1,33 @@
-from cProfile import label
-from ctypes import windll
-from os.path import exists
+# from cProfile import label
+# from ctypes import windll
+# from os.path import exists
+# from pty import master_open
 from tkinter import *
 from tkinter.filedialog import askopenfile, askopenfilename, asksaveasfile
 from tkinter.messagebox import showinfo, askyesno, askyesnocancel
 from tkinter.scrolledtext import ScrolledText
+from tkinter.ttk import Frame, Radiobutton
 from os import path
-from unittest.mock import file_spec
+# from unittest.mock import file_spec
 
 import keyboard
 from select import select
 
 
-class Notepad():
+class Notepad:
 
 
     def __init__(self):
         self.root = Tk()
-        self.root.geometry('260x220')
+        self.root.geometry('600x400')
         self.root.resizable(True, True)
         self.root.minsize(width=260, height=220)
         self.root.title('BS_Notepad')
 
-        self.file_spec = ''
-        self.file_name = ''
+        self.file_spec = ''     # полный путь к файлу
+        self.file_name = ''     # имя файла
+
+        self.seek_direction = 0     # Направление поиска
 
         self.root.option_add('*tearOff', FALSE)   # глобальная установка параметра для меню
 
@@ -33,7 +37,7 @@ class Notepad():
                          , ('Сохранить', self.save_existing_file)
                          , ("Сохранить как...", self.save_file_as)
                          , '__sep__'
-                         , ('Выход', self.cmd_exit))
+                         , ('Выход', self.on_exit))
 
         # self.edit_menu = Menu()
         # set_cascade(self.edit_menu, 'Отменить    CTRL/Z'
@@ -70,9 +74,62 @@ class Notepad():
         self.editor = ScrolledText(master=self.root)
         self.editor.pack(fill=BOTH, expand=1)
 
-        # self.root.protocol("WM_DELETE_WINDOW", lambda: self.on_exit)
+        self.root.protocol("WM_DELETE_WINDOW",  self.on_exit)
+
+        self.editor.bind('<Control-f>', self.find)
+        self.find_test = ''
 
         self.root.mainloop()
+
+    def find(self, event):
+        self.editor.tag_remove('found', '1.0', END)
+        ask_find = Window(title='Поиск', geometry='300x200')
+        s = Entry(master=ask_find)
+        Label(master=ask_find, text='Найти:').place(x=10, y=10)
+        text_to_find = Entry(master=ask_find, width=38)
+        text_to_find.place(x=55, y=10)
+        text_to_find.focus_set()
+
+        frame_seek_direction = Frame(master=ask_find, borderwidth=1, relief=SOLID, padding=[8, 10])
+
+        self.seek_direction = StringVar(master=frame_seek_direction, value='1')
+        position = {"padx": 6, "pady": 6, "anchor": NW}
+
+        Label(master=frame_seek_direction, text='направление:').grid(row=1, column=0)
+        rbtn_forward = Radiobutton(master=frame_seek_direction, text='вниз', value='1', variable=self.seek_direction)
+        rbtn_forward.grid(row=1, column=1)
+        rbtn_backward = Radiobutton(master=frame_seek_direction, text='вверх', value='-1', variable=self.seek_direction)
+        rbtn_backward.grid(row=2, column=1)
+
+        btn_find = Button(master=frame_seek_direction, text='Поиск', command=self.do_seek)
+        btn_find.grid(row = 3, column=1)
+
+        lbl=Label(master=frame_seek_direction, textvariable=self.seek_direction)
+        lbl.grid(row=4, column=0)
+        Label(master=frame_seek_direction, text=lbl['text']).grid(row=4, column=1)
+
+
+        frame_seek_direction.place(x=130, y=55)
+
+
+
+        # Label(master=ask_find, text='Заменить:').pack(side=LEFT)
+        # text_to_replace = Entry(master=ask_find)
+        # text_to_replace.pack(side=LEFT, fill=BOTH,expand=1)
+        #
+
+    def do_seek(self):
+
+        print(self.seek_direction.get())
+
+    def on_exit(self):
+        if self.editor.edit_modified():
+            answ = askyesnocancel(title='Файл не сохранён', message=f'Файл не сохранён. Хотите его сохранить?')
+            if answ is None:
+                return
+            elif answ:
+                self.save_file(self.file_spec)
+        self.root.destroy()
 
 
     def test_modified(self):
@@ -83,7 +140,7 @@ class Notepad():
 
     def f_name_changed(self):
         self.file_name = self.file_spec[self.file_spec.rfind('/')+1:]
-        self.root.title = 'NotePad - ' + self.file_name
+        self.root.title('NotePad - ' + self.file_name)
 
     def save_existing_file(self):
         self.save_file(self.file_spec)
@@ -125,15 +182,6 @@ class Notepad():
     def show_about(self):
         showinfo('О программе', 'Программа NotePad\nАвтор - Смирнов Б.Е.\nВерсия 1.0, сборка 16.09.2024')
 
-    def cmd_exit(self):
-        if not askyesno(title='Внимание!', message='Вы сохранили текст?'):
-            showinfo(title='Ох, как печально!!', message='Шеф, всё пропало!!!')
-        self.root.destroy()
-
-    # def on_exit(self, wnd):
-
-
-
     def show_help(self):
         w_help = Window(geometry='300x250')
         help = Label(master=w_help, text='''
@@ -166,8 +214,8 @@ class Window(Tk):
 
         self.windows_count += 1
 
-        self.title = title + (str(self.windows_count) if title == 'Window_' else '')
-        print(self.title)
+        self.title(title + (str(self.windows_count) if title == 'Window_' else ''))
+        # print(self.title)
         self.geometry(geometry)
         self.resizable(*resizable)
 
