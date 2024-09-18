@@ -2,6 +2,9 @@
 # from ctypes import windll
 # from os.path import exists
 # from pty import master_open
+from getopt import do_shorts
+from operator import index
+from re import search
 from tkinter import *
 from tkinter.filedialog import askopenfile, askopenfilename, asksaveasfile
 from tkinter.messagebox import showinfo, askyesno, askyesnocancel
@@ -27,7 +30,7 @@ class Notepad:
         self.file_spec = ''     # полный путь к файлу
         self.file_name = ''     # имя файла
 
-        self.seek_direction = 0     # Направление поиска
+        self.search_direction = True     # Направление поиска - вперёд
 
         self.root.option_add('*tearOff', FALSE)   # глобальная установка параметра для меню
 
@@ -39,8 +42,9 @@ class Notepad:
                          , '__sep__'
                          , ('Выход', self.on_exit))
 
-        # self.edit_menu = Menu()
-        # set_cascade(self.edit_menu, 'Отменить    CTRL/Z'
+        self.edit_menu = Menu()
+        set_cascade(self.edit_menu
+        #                  , 'Отменить    CTRL/Z'
         #                  , 'Вырезать    CTRL/X'
         #                  , 'Копировать  CTRL/C'
         #                  , 'Вставить    CTRL/V'
@@ -49,9 +53,9 @@ class Notepad:
         #                  , 'Заменить...  CTRL/H'
         #                  , 'Перейти...   CTRL/G'
         #                  , '__sep__'
-        #                  , 'Найти...     CTRL/F'
-        #                  , 'Найти далее  F3'
-        #                  )
+                         , ('Найти...     CTRL/F', self.exec_search)
+                         , ('Найти далее  F3', self.next_search)
+                         )
 
         self.help_menu = Menu()
         set_cascade(self.help_menu, ('Помощь пользователю', self.show_help)
@@ -63,7 +67,7 @@ class Notepad:
 
         self.main_menu = Menu()
         set_cascade(self.main_menu, ('__cascade__', "Файл", self.file_menu)
-                         # , ('__cascade__', "Правка", self.edit_menu)
+                         , ('__cascade__', "Правка", self.edit_menu)
                          , ('__cascade__', "Справка", self.help_menu)
                          , ('__cascade__', "Тест", self.test_menu)
                          )
@@ -77,39 +81,51 @@ class Notepad:
         self.root.protocol("WM_DELETE_WINDOW",  self.on_exit)
 
         self.editor.bind('<Control-f>', self.find)
-        self.find_test = ''
+        self.editor.bind('<Control-F>', self.find)
+        self.editor.bind('<F3>', self.next_search)
+
+        self.find_text = ''
 
         self.root.mainloop()
 
+    def exec_search(self):
+        self.find(None)
+
+    def next_search(self, event):
+        if self.find_text == '':
+            self.find(None)
+        else:
+            self.do_search()
+
     def find(self, event):
         self.editor.tag_remove('found', '1.0', END)
-        ask_find = Window(title='Поиск', geometry='300x200')
-        s = Entry(master=ask_find)
-        Label(master=ask_find, text='Найти:').place(x=10, y=10)
-        text_to_find = Entry(master=ask_find, width=38)
-        text_to_find.place(x=55, y=10)
-        text_to_find.focus_set()
+        self.ask_find = Toplevel()
+        self.ask_find.title('Поиск')
+        self.ask_find.geometry('300x150')
+        self.ask_find.grab_set()
+        self.ask_find.protocol("WM_DELETE_WINDOW", lambda: dismiss(self.ask_find))  # перехватываем нажатие на крестик
 
-        frame_seek_direction = Frame(master=ask_find, borderwidth=1, relief=SOLID, padding=[8, 10])
+        s = Entry(master=self.ask_find)
+        Label(master=self.ask_find, text='Найти:').place(x=10, y=10)
+        self.text_to_find = Entry(master=self.ask_find, width=38)
+        self.text_to_find.place(x=55, y=10)
+        self.text_to_find.focus_set()
 
-        self.seek_direction = StringVar(master=frame_seek_direction, value='1')
+        frame_search_direction = Frame(master=self.ask_find, borderwidth=1, relief=SOLID, padding=[8, 10])
+
+        self.search_direction_var = BooleanVar(master=frame_search_direction, value=self.search_direction)
         position = {"padx": 6, "pady": 6, "anchor": NW}
 
-        Label(master=frame_seek_direction, text='направление:').grid(row=1, column=0)
-        rbtn_forward = Radiobutton(master=frame_seek_direction, text='вниз', value='1', variable=self.seek_direction)
+        Label(master=frame_search_direction, text='направление:').grid(row=1, column=0)
+        rbtn_forward = Radiobutton(master=frame_search_direction, text='вниз', value=True, variable=self.search_direction_var)
         rbtn_forward.grid(row=1, column=1)
-        rbtn_backward = Radiobutton(master=frame_seek_direction, text='вверх', value='-1', variable=self.seek_direction)
+        rbtn_backward = Radiobutton(master=frame_search_direction, text='вверх', value=False, variable=self.search_direction_var)
         rbtn_backward.grid(row=2, column=1)
 
-        btn_find = Button(master=frame_seek_direction, text='Поиск', command=self.do_seek)
-        btn_find.grid(row = 3, column=1)
+        btn_find = Button(master=self.ask_find, text='Поиск', command=self.do_search_text)
+        btn_find.place(x=20, y=55)
 
-        lbl=Label(master=frame_seek_direction, textvariable=self.seek_direction)
-        lbl.grid(row=4, column=0)
-        Label(master=frame_seek_direction, text=lbl['text']).grid(row=4, column=1)
-
-
-        frame_seek_direction.place(x=130, y=55)
+        frame_search_direction.place(x=130, y=55)
 
 
 
@@ -118,9 +134,24 @@ class Notepad:
         # text_to_replace.pack(side=LEFT, fill=BOTH,expand=1)
         #
 
-    def do_seek(self):
+    def do_search_text(self):
+        self.find_text = self.text_to_find.get()
+        self.do_search()
 
-        print(self.seek_direction.get())
+
+    def do_search(self):
+        if self.search_direction:
+            idx = self.editor.search(pattern=self.find_text,index=self.editor.index('current'),stopindex=END
+                               ,forwards=True)
+        else:
+            idx = self.editor.search(pattern=self.find_text, index='1.0', stopindex=self.editor.index('current')
+                                     ,backwards=True)
+        if idx:
+            self.editor.mark_set('insert', index=idx)
+            self.editor.see('insert')
+            self.ask_find.destroy()
+        else:
+            showinfo('Поиск...', 'Искомый текст не найден')
 
     def on_exit(self):
         if self.editor.edit_modified():
@@ -174,7 +205,8 @@ class Notepad:
         self.file_spec = askopenfilename(initialdir='/', filetypes=(('Текстовые файлы', '.txt'), ('Все файлы', '*')))
         if self.file_spec is None:
             return
-        with open(self.file_spec, encoding='utf-8') as file:
+        # with open(self.file_spec, encoding='utf-8') as file:
+        with open(self.file_spec) as file:
             self.editor.insert('1.0', chars=file.read())
         self.f_name_changed()
         self.editor.edit_modified(False)
@@ -236,6 +268,11 @@ def set_cascade(menu: Menu, *commands):
             menu.add_command(label=spec, command=name)
         else:
             pass
+
+def dismiss(window):
+    window.grab_release()
+    window.destroy()
+
 
 
 if __name__ == '__main__':
