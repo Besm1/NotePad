@@ -2,12 +2,9 @@
 # from ctypes import windll
 # from os.path import exists
 # from pty import master_open
-from getopt import do_shorts
-from operator import index
-from re import search
 from tkinter import *
-from tkinter.filedialog import askopenfile, askopenfilename, asksaveasfile
-from tkinter.messagebox import showinfo, askyesno, askyesnocancel
+from tkinter.filedialog import askopenfilename, asksaveasfile
+from tkinter.messagebox import showinfo, askyesnocancel
 from tkinter.scrolledtext import ScrolledText
 from tkinter.ttk import Frame, Radiobutton
 from os import path
@@ -18,7 +15,6 @@ from select import select
 
 
 class Notepad:
-
 
     def __init__(self):
         self.root = Tk()
@@ -44,18 +40,19 @@ class Notepad:
 
         self.edit_menu = Menu()
         set_cascade(self.edit_menu
-        #                  , 'Отменить    CTRL/Z'
+                        , ('Отменить    CTRL/Z', self.undo)
+                           , ('Повторить   CTRL/Y', self.redo)
         #                  , 'Вырезать    CTRL/X'
         #                  , 'Копировать  CTRL/C'
         #                  , 'Вставить    CTRL/V'
-        #                  , 'Удалить'
+                        , ('Удалить       DEL', self.delete)
         #                  , '__sep__'
         #                  , 'Заменить...  CTRL/H'
-        #                  , 'Перейти...   CTRL/G'
-        #                  , '__sep__'
-                         , ('Найти...     CTRL/F', self.exec_search)
-                         , ('Найти далее  F3', self.next_search)
-                         )
+                        , ('Перейти...   CTRL/G', self.goto_dialog)
+                        , '__sep__'
+                        , ('Найти...     CTRL/F', self.exec_search)
+                        , ('Найти далее  F3', self.find_next)
+                    )
 
         self.help_menu = Menu()
         set_cascade(self.help_menu, ('Помощь пользователю', self.show_help)
@@ -72,32 +69,37 @@ class Notepad:
                          , ('__cascade__', "Тест", self.test_menu)
                          )
 
-
         self.root.config(menu=self.main_menu)
 
-        self.editor = ScrolledText(master=self.root)
+        self.editor = ScrolledText(master=self.root, undo=True)
         self.editor.pack(fill=BOTH, expand=1)
 
         self.root.protocol("WM_DELETE_WINDOW",  self.on_exit)
 
-        self.editor.bind('<Control-f>', self.find)
-        self.editor.bind('<Control-F>', self.find)
+        self.editor.bind('<Control-f>', self.find_dialog)
+        self.editor.bind('<Control-F>', self.find_dialog)
         self.editor.bind('<F3>', self.next_search)
+        self.editor.bind('<Control-G>', self.goto_dialog_2)
+        self.editor.bind('<Control-g>', self.goto_dialog_2)
 
         self.find_text = ''
 
         self.root.mainloop()
 
     def exec_search(self):
-        self.find(None)
+        # Вызывается при выборе пункта меню "Поиск...".
+        # Только лишь является "прослойкой" для вызова метода find_dialog, т.к find_dialog требует передачи двух параметров, а
+        #     exec_search получает только один
+        self.find_dialog(None)
 
     def next_search(self, event):
         if self.find_text == '':
-            self.find(None)
+            self.find_dialog(None)
         else:
-            self.do_search()
+            self.find_next()
 
-    def find(self, event):
+    def find_dialog(self, event):
+        # Вызывается при нажатии CTRL/F
         self.editor.tag_remove('found', '1.0', END)
         self.ask_find = Toplevel()
         self.ask_find.title('Поиск')
@@ -124,34 +126,112 @@ class Notepad:
 
         btn_find = Button(master=self.ask_find, text='Поиск', command=self.do_search_text)
         btn_find.place(x=20, y=55)
+        self.text_to_find.bind(sequence='<Return>', func=self.do_search_text_2)
 
         frame_search_direction.place(x=130, y=55)
 
-
-
-        # Label(master=ask_find, text='Заменить:').pack(side=LEFT)
-        # text_to_replace = Entry(master=ask_find)
-        # text_to_replace.pack(side=LEFT, fill=BOTH,expand=1)
-        #
+    def do_search_text_2(self, event):
+        # Вызывается из метода Find при нажатии клавиши "Return" в строке искомого текста в форме "
+        # Только лишь является "прослойкой" для вызова метода do_search_text, т.к do_search_text требует передачи одного
+        # параметра, а do_search_text_2 получает два
+        self.do_search_text()
 
     def do_search_text(self):
+        # Вызывается при нажатии на кнопку "Поиск" в диалоге "Поиск..." и при нажатии клавиши Return (через метод
+        # do_search_text_2. Устанавливает параметры поиска и вызывает функцию непосредственного поиска.
         self.find_text = self.text_to_find.get()
+        self.search_direction = self.search_direction_var.get()
         self.do_search()
 
 
     def do_search(self):
-        if self.search_direction:
-            idx = self.editor.search(pattern=self.find_text,index=self.editor.index('current'),stopindex=END
+       # Функция непосредственного поиска текста self.find_text в self.editor.search в направлении
+       #  self.search_direction от текущей позиции
+        if self.search_direction: # Вниз
+            idx = self.editor.search(pattern=self.find_text,index=self.editor.index('insert'),stopindex=END
                                ,forwards=True)
-        else:
-            idx = self.editor.search(pattern=self.find_text, index='1.0', stopindex=self.editor.index('current')
+        else:     # Вверх
+            idx = self.editor.search(pattern=self.find_text, index=self.editor.index('insert'), stopindex='1.0'
                                      ,backwards=True)
-        if idx:
+            # idx = self.editor.search(pattern=self.find_text, index='1.0', stopindex=self.editor.index('current')
+            #                          ,backwards=True)
+        if idx: # Нашли текст
+            # self.editor.mark_set('current', index=idx)
             self.editor.mark_set('insert', index=idx)
             self.editor.see('insert')
             self.ask_find.destroy()
         else:
             showinfo('Поиск...', 'Искомый текст не найден')
+
+    def find_next(self):
+        if self.search_direction:
+            idx = self.editor.search(pattern=self.find_text
+                                     , index=f'{self.editor.index('insert')} + {len(self.find_text)}c'
+                                     , stopindex=END, forwards=True)
+        elif self.editor.index('current') != '1.0':  # Вверх
+            idx = self.editor.search(pattern=self.find_text
+                                     , index=f'{self.editor.index('insert')} - {len(self.find_text)}c'
+                                     , stopindex='1.0', backwards=True)
+        else: idx = None
+        if idx: # Нашли текст
+            # self.editor.mark_set('current', index=idx)
+            self.editor.mark_set('insert', index=idx)
+            self.editor.see('insert')
+        else:
+            showinfo('BS_NotePad - Поиск', 'Искомый текст не найден')
+
+    def goto_dialog_2(self, event):
+        self.goto_dialog()
+
+    def goto_dialog(self):
+        # Вызывается при нажатии CTRL/F
+        self.ask_goto = Toplevel()
+        self.ask_goto.title('Переход на строку')
+        self.ask_goto.geometry('200x90')
+        self.ask_goto.grab_set()
+        self.ask_goto.protocol("WM_DELETE_WINDOW", lambda: dismiss(self.ask_goto))  # перехватываем нажатие на крестик
+
+        # s = Entry(master=self.ask_goto, validate='key', validatecommand=(self.validate_decimal('%S')))
+        Label(master=self.ask_goto, text='Номер строки:').place(x=10, y=10)
+        reg = self.ask_goto.register(validate_decimal)
+        self.line_to_go_fld = Entry(master=self.ask_goto, width=5, validate='key'
+                                  , validatecommand=(reg, '%P'))
+        self.line_to_go_fld.place(x=105, y=10)
+        self.line_to_go_fld.focus_set()
+
+        btn_goto = Button(master=self.ask_goto, text='Перейти', command=self.do_goto)
+        btn_goto.place(x=10, y=45)
+        self.line_to_go_fld.bind(sequence='<Return>', func=self.do_goto_2)
+
+
+    def do_goto_2(self, event):
+        self.do_goto()
+
+    def do_goto(self):
+        line_no = self.editor.index(END).split('.')[0]
+        if int(self.line_to_go_fld.get()) > int(line_no) - 1:
+            showinfo(title='BS_NotePad - Переход на строку', message='Номер строки превышает количество строк')
+        else:
+            self.editor.mark_set('insert', index=self.line_to_go_fld.get() + '.0')
+            self.editor.see('insert')
+            self.editor.focus_set()
+            self.ask_goto.destroy()
+
+
+    def undo(self):
+        self.editor.edit_undo()
+
+    def redo(self):
+        self.editor.edit_redo()
+
+    def delete(self):
+        try:
+            f = self.editor.index('sel.first')
+            l = self.editor.index('sel.last')
+            self.editor.delete(f,l)
+        except:
+            self.editor.delete(self.editor.index('insert'))
+
 
     def on_exit(self):
         if self.editor.edit_modified():
@@ -162,7 +242,6 @@ class Notepad:
                 self.save_file(self.file_spec)
         self.root.destroy()
 
-
     def test_modified(self):
         print(self.editor.edit_modified())
 
@@ -170,7 +249,6 @@ class Notepad:
         print(askyesnocancel(title='Файл не сохранён', message=f'Файл не сохранён. Хотите его сохранить?'))
 
     def f_name_changed(self):
-        self.file_name = self.file_spec[self.file_spec.rfind('/')+1:]
         self.root.title('NotePad - ' + self.file_name)
 
     def save_existing_file(self):
@@ -181,7 +259,8 @@ class Notepad:
 
     def save_file(self, filespec):
         if filespec is None or filespec == '':
-            file = asksaveasfile(filetypes=[('Текстовые файлы', '.txt'), ('Любые файлы', '.*')], defaultextension='.txt',title='Запись файла')
+            file = asksaveasfile(filetypes=[('Текстовые файлы', '.txt'), ('Любые файлы', '.*')], defaultextension='.txt'
+                                 ,title='Запись файла')
             if file is None:
                 return
             file.write(self.editor.get('1.0', END))
@@ -208,6 +287,7 @@ class Notepad:
         # with open(self.file_spec, encoding='utf-8') as file:
         with open(self.file_spec) as file:
             self.editor.insert('1.0', chars=file.read())
+            self.file_name = path.basename(self.file_spec)
         self.f_name_changed()
         self.editor.edit_modified(False)
 
@@ -273,6 +353,8 @@ def dismiss(window):
     window.grab_release()
     window.destroy()
 
+def validate_decimal(key):
+    return key.isdecimal()
 
 
 if __name__ == '__main__':
