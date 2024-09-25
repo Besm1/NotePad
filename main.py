@@ -8,6 +8,9 @@ from tkinter.messagebox import showinfo, askyesnocancel
 from tkinter.scrolledtext import ScrolledText
 from tkinter.ttk import Frame, Radiobutton
 from os import path
+from winreg import DeleteKey
+
+from keyboard import send
 # from unittest.mock import file_spec
 
 import keyboard
@@ -41,16 +44,16 @@ class Notepad:
         self.edit_menu = Menu()
         set_cascade(self.edit_menu
                         , ('Отменить    CTRL/Z', self.undo)
-                           , ('Повторить   CTRL/Y', self.redo)
-        #                  , 'Вырезать    CTRL/X'
-        #                  , 'Копировать  CTRL/C'
-        #                  , 'Вставить    CTRL/V'
+                        , ('Повторить   CTRL/Y', self.redo)
+                        , ('Вырезать    CTRL/X', self.cut)
+                        , ('Копировать  CTRL/C', self.copy)
+                        , ('Вставить    CTRL/V', self.paste)
                         , ('Удалить       DEL', self.delete)
-        #                  , '__sep__'
-        #                  , 'Заменить...  CTRL/H'
-                        , ('Перейти...   CTRL/G', self.goto_dialog)
                         , '__sep__'
-                        , ('Найти...     CTRL/F', self.exec_search)
+        #                , ('Заменить...  CTRL/H', self.replace_dialog_2)
+                        , ('Перейти...   CTRL/G', self.goto_dialog_2)
+                        , '__sep__'
+                        , ('Найти...     CTRL/F', self.find_dialog_2)
                         , ('Найти далее  F3', self.find_next)
                     )
 
@@ -79,14 +82,14 @@ class Notepad:
         self.editor.bind('<Control-f>', self.find_dialog)
         self.editor.bind('<Control-F>', self.find_dialog)
         self.editor.bind('<F3>', self.next_search)
-        self.editor.bind('<Control-G>', self.goto_dialog_2)
-        self.editor.bind('<Control-g>', self.goto_dialog_2)
+        self.editor.bind('<Control-G>', self.goto_dialog)
+        self.editor.bind('<Control-g>', self.goto_dialog)
 
         self.find_text = ''
 
         self.root.mainloop()
 
-    def exec_search(self):
+    def find_dialog_2(self):
         # Вызывается при выборе пункта меню "Поиск...".
         # Только лишь является "прослойкой" для вызова метода find_dialog, т.к find_dialog требует передачи двух параметров, а
         #     exec_search получает только один
@@ -180,10 +183,10 @@ class Notepad:
         else:
             showinfo('BS_NotePad - Поиск', 'Искомый текст не найден')
 
-    def goto_dialog_2(self, event):
-        self.goto_dialog()
+    def goto_dialog_2(self):
+        self.goto_dialog(None)
 
-    def goto_dialog(self):
+    def goto_dialog(self, event):
         # Вызывается при нажатии CTRL/F
         self.ask_goto = Toplevel()
         self.ask_goto.title('Переход на строку')
@@ -217,6 +220,14 @@ class Notepad:
             self.editor.focus_set()
             self.ask_goto.destroy()
 
+    def copy(self):
+        send('ctrl+c')
+
+    def paste(self):
+        send('ctrl+v')
+
+    def cut(self):
+        send('ctrl+x')
 
     def undo(self):
         self.editor.edit_undo()
@@ -225,12 +236,7 @@ class Notepad:
         self.editor.edit_redo()
 
     def delete(self):
-        try:
-            f = self.editor.index('sel.first')
-            l = self.editor.index('sel.last')
-            self.editor.delete(f,l)
-        except:
-            self.editor.delete(self.editor.index('insert'))
+        send('del')
 
 
     def on_exit(self):
