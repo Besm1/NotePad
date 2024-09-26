@@ -54,7 +54,7 @@ class Notepad:
                         , ('Перейти...   CTRL/G', self.goto_dialog_2)
                         , '__sep__'
                         , ('Найти...     CTRL/F', self.find_dialog_2)
-                        , ('Найти далее  F3', self.find_next)
+                        , ('Найти далее  F3', self.next_search_2)
                     )
 
         self.help_menu = Menu()
@@ -82,6 +82,7 @@ class Notepad:
         self.editor.bind('<Control-f>', self.find_dialog)
         self.editor.bind('<Control-F>', self.find_dialog)
         self.editor.bind('<F3>', self.next_search)
+        # self.editor.bind('<F3>', self.do_search_2)
         self.editor.bind('<Control-G>', self.goto_dialog)
         self.editor.bind('<Control-g>', self.goto_dialog)
 
@@ -95,11 +96,17 @@ class Notepad:
         #     exec_search получает только один
         self.find_dialog(None)
 
+
+
+    def next_search_2(self):
+        self.next_search(None)
+
     def next_search(self, event):
         if self.find_text == '':
             self.find_dialog(None)
         else:
-            self.find_next()
+            # self.find_next()
+            self.do_search()
 
     def find_dialog(self, event):
         # Вызывается при нажатии CTRL/F
@@ -113,6 +120,8 @@ class Notepad:
         s = Entry(master=self.ask_find)
         Label(master=self.ask_find, text='Найти:').place(x=10, y=10)
         self.text_to_find = Entry(master=self.ask_find, width=38)
+        if self.find_text:
+            self.text_to_find.insert(0, self.find_text )
         self.text_to_find.place(x=55, y=10)
         self.text_to_find.focus_set()
 
@@ -146,15 +155,22 @@ class Notepad:
         self.search_direction = self.search_direction_var.get()
         self.do_search()
 
-
     def do_search(self):
-       # Функция непосредственного поиска текста self.find_text в self.editor.search в направлении
-       #  self.search_direction от текущей позиции
+        # Функция непосредственного поиска текста self.find_text в self.editor.search в направлении
+        #  self.search_direction от текущей позиции
+        try:
+            idx_1st_forwards = self.editor.index('found.last')
+            idx_lst_backwards = self.editor.index('found.first')
+            self.editor.tag_remove('found', idx_lst_backwards, idx_1st_forwards)
+            self.editor.tag_remove('sel', idx_lst_backwards, idx_1st_forwards)
+        except TclError:
+            idx_1st_forwards = self.editor.index('insert')
+            idx_lst_backwards = self.editor.index('insert')
         if self.search_direction: # Вниз
-            idx = self.editor.search(pattern=self.find_text,index=self.editor.index('insert'),stopindex=END
+            idx = self.editor.search(pattern=self.find_text,index=idx_1st_forwards,stopindex=END
                                ,forwards=True)
         else:     # Вверх
-            idx = self.editor.search(pattern=self.find_text, index=self.editor.index('insert'), stopindex='1.0'
+            idx = self.editor.search(pattern=self.find_text, index=idx_lst_backwards, stopindex='1.0'
                                      ,backwards=True)
             # idx = self.editor.search(pattern=self.find_text, index='1.0', stopindex=self.editor.index('current')
             #                          ,backwards=True)
@@ -162,26 +178,13 @@ class Notepad:
             # self.editor.mark_set('current', index=idx)
             self.editor.mark_set('insert', index=idx)
             self.editor.see('insert')
-            self.ask_find.destroy()
+            self.editor.tag_add('found', idx, idx + f' + {len(self.find_text)}c')
+            self.editor.tag_add('sel', idx, idx + f' + {len(self.find_text)}c')
+            self.editor.tag_config('found', background='blue', foreground='white')
+            # self.editor.focus_set()
+            # self.ask_find.destroy()
         else:
             showinfo('Поиск...', 'Искомый текст не найден')
-
-    def find_next(self):
-        if self.search_direction:
-            idx = self.editor.search(pattern=self.find_text
-                                     , index=f'{self.editor.index('insert')} + {len(self.find_text)}c'
-                                     , stopindex=END, forwards=True)
-        elif self.editor.index('current') != '1.0':  # Вверх
-            idx = self.editor.search(pattern=self.find_text
-                                     , index=f'{self.editor.index('insert')} - {len(self.find_text)}c'
-                                     , stopindex='1.0', backwards=True)
-        else: idx = None
-        if idx: # Нашли текст
-            # self.editor.mark_set('current', index=idx)
-            self.editor.mark_set('insert', index=idx)
-            self.editor.see('insert')
-        else:
-            showinfo('BS_NotePad - Поиск', 'Искомый текст не найден')
 
     def goto_dialog_2(self):
         self.goto_dialog(None)
@@ -296,6 +299,9 @@ class Notepad:
             self.file_name = path.basename(self.file_spec)
         self.f_name_changed()
         self.editor.edit_modified(False)
+        self.editor.mark_set('insert', '1.0')
+        self.editor.see('1.0')
+        self.editor.focus_set()
 
     def show_about(self):
         showinfo('О программе', 'Программа NotePad\nАвтор - Смирнов Б.Е.\nВерсия 1.0, сборка 16.09.2024')
