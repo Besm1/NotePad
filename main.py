@@ -50,26 +50,21 @@ class Notepad:
                         , ('Вставить    CTRL/V', self.paste)
                         , ('Удалить       DEL', self.delete)
                         , '__sep__'
-        #                , ('Заменить...  CTRL/H', self.replace_dialog_2)
-                        , ('Перейти...   CTRL/G', self.goto_dialog_2)
+        #                , ('Заменить...  CTRL/H', self.replace_dialog)
+                        , ('Перейти...   CTRL/G', self.goto_dialog)
                         , '__sep__'
-                        , ('Найти...     CTRL/F', self.find_dialog_2)
-                        , ('Найти далее  F3', self.next_search_2)
+                        , ('Найти...     CTRL/F', self.find_dialog)
+                        , ('Найти далее  F3', self.next_search)
                     )
 
         self.help_menu = Menu()
         set_cascade(self.help_menu, ('Помощь пользователю', self.show_help)
                          , ('О программе', self.show_about))
 
-        self.test_menu = Menu()
-        set_cascade(self.test_menu, ('Флаг editor.modified', self.test_modified)
-                    , ('test askyesnocancel', self.test_askyesnocancel))
-
         self.main_menu = Menu()
         set_cascade(self.main_menu, ('__cascade__', "Файл", self.file_menu)
                          , ('__cascade__', "Правка", self.edit_menu)
                          , ('__cascade__', "Справка", self.help_menu)
-                         , ('__cascade__', "Тест", self.test_menu)
                          )
 
         self.root.config(menu=self.main_menu)
@@ -79,43 +74,50 @@ class Notepad:
 
         self.root.protocol("WM_DELETE_WINDOW",  self.on_exit)
 
-        self.editor.bind('<Control-f>', self.find_dialog)
-        self.editor.bind('<Control-F>', self.find_dialog)
+        # self.editor.bind('<Control-f>', self.find_dialog)
+        # self.editor.bind('<Control-F>', self.find_dialog)
+        # #self.editor.bind('<Control-а>', self.find_dialog)
+        # #self.editor.bind('<Control-А>', self.find_dialog)
+        # self.editor.bind('<Control-G>', self.goto_dialog)
+        # self.editor.bind('<Control-g>', self.goto_dialog)
+
         self.editor.bind('<F3>', self.next_search)
-        # self.editor.bind('<F3>', self.do_search_2)
-        self.editor.bind('<Control-G>', self.goto_dialog)
-        self.editor.bind('<Control-g>', self.goto_dialog)
+        self.editor.bind('<Shift-F3>', self.next_search)
+        self.editor.bind('<Control-KeyPress>', self.ctrl_key)
 
         self.find_text = ''
 
         self.root.mainloop()
 
-    def find_dialog_2(self):
-        # Вызывается при выборе пункта меню "Поиск...".
-        # Только лишь является "прослойкой" для вызова метода find_dialog, т.к find_dialog требует передачи двух параметров, а
-        #     exec_search получает только один
-        self.find_dialog(None)
+    def ctrl_key(self, event):
+        if event.keycode==86:
+            event.widget.event_generate("<<Paste>>")
+        elif event.keycode==67:
+            event.widget.event_generate("<<Copy>>")
+        elif event.keycode==88:
+            event.widget.event_generate("<<Cut>>")
+        elif event.keycode==71: # Ctrl-G
+            self.goto_dialog()
+        elif event.keycode==70:
+            self.find_dialog()
 
 
-
-    def next_search_2(self):
-        self.next_search(None)
-
-    def next_search(self, event):
-        if self.find_text == '':
-            self.find_dialog(None)
-        else:
+    def next_search(self, *event):
+        self.search_direction = not (event[0].state & 0x01)  # 1 - Shift
+        if self.find_text:
             # self.find_next()
             self.do_search()
+        else:
+            self.find_dialog(None)
 
-    def find_dialog(self, event):
+    def find_dialog(self, *event):
         # Вызывается при нажатии CTRL/F
         self.editor.tag_remove('found', '1.0', END)
         self.ask_find = Toplevel()
         self.ask_find.title('Поиск')
         self.ask_find.geometry('300x150')
         self.ask_find.grab_set()
-        self.ask_find.protocol("WM_DELETE_WINDOW", lambda: dismiss(self.ask_find))  # перехватываем нажатие на крестик
+        self.ask_find.protocol("WM_DELETE_WINDOW", lambda: close_window(self.ask_find))  # перехватываем нажатие на крестик
 
         s = Entry(master=self.ask_find)
         Label(master=self.ask_find, text='Найти:').place(x=10, y=10)
@@ -138,17 +140,11 @@ class Notepad:
 
         btn_find = Button(master=self.ask_find, text='Поиск', command=self.do_search_text)
         btn_find.place(x=20, y=55)
-        self.text_to_find.bind(sequence='<Return>', func=self.do_search_text_2)
+        self.text_to_find.bind(sequence='<Return>', func=self.do_search_text)
 
         frame_search_direction.place(x=130, y=55)
 
-    def do_search_text_2(self, event):
-        # Вызывается из метода Find при нажатии клавиши "Return" в строке искомого текста в форме "
-        # Только лишь является "прослойкой" для вызова метода do_search_text, т.к do_search_text требует передачи одного
-        # параметра, а do_search_text_2 получает два
-        self.do_search_text()
-
-    def do_search_text(self):
+    def do_search_text(self, *event):
         # Вызывается при нажатии на кнопку "Поиск" в диалоге "Поиск..." и при нажатии клавиши Return (через метод
         # do_search_text_2. Устанавливает параметры поиска и вызывает функцию непосредственного поиска.
         self.find_text = self.text_to_find.get()
@@ -186,16 +182,13 @@ class Notepad:
         else:
             showinfo('Поиск...', 'Искомый текст не найден')
 
-    def goto_dialog_2(self):
-        self.goto_dialog(None)
-
-    def goto_dialog(self, event):
+    def goto_dialog(self, *event):
         # Вызывается при нажатии CTRL/F
         self.ask_goto = Toplevel()
         self.ask_goto.title('Переход на строку')
         self.ask_goto.geometry('200x90')
         self.ask_goto.grab_set()
-        self.ask_goto.protocol("WM_DELETE_WINDOW", lambda: dismiss(self.ask_goto))  # перехватываем нажатие на крестик
+        self.ask_goto.protocol("WM_DELETE_WINDOW", lambda: close_window(self.ask_goto))  # перехватываем нажатие на крестик
 
         # s = Entry(master=self.ask_goto, validate='key', validatecommand=(self.validate_decimal('%S')))
         Label(master=self.ask_goto, text='Номер строки:').place(x=10, y=10)
@@ -207,13 +200,10 @@ class Notepad:
 
         btn_goto = Button(master=self.ask_goto, text='Перейти', command=self.do_goto)
         btn_goto.place(x=10, y=45)
-        self.line_to_go_fld.bind(sequence='<Return>', func=self.do_goto_2)
+        self.line_to_go_fld.bind(sequence='<Return>', func=self.do_goto)
 
 
-    def do_goto_2(self, event):
-        self.do_goto()
-
-    def do_goto(self):
+    def do_goto(self, *event):
         line_no = self.editor.index(END).split('.')[0]
         if int(self.line_to_go_fld.get()) > int(line_no) - 1:
             showinfo(title='BS_NotePad - Переход на строку', message='Номер строки превышает количество строк')
@@ -224,13 +214,16 @@ class Notepad:
             self.ask_goto.destroy()
 
     def copy(self):
-        send('ctrl+c')
+        # send('ctrl+c')
+        self.editor.event_generate('<<Copy>>')
 
     def paste(self):
-        send('ctrl+v')
+        # send('ctrl+v')
+        self.editor.event_generate('<<Paste>>')
 
     def cut(self):
-        send('ctrl+x')
+        # send('ctrl+x')
+        self.editor.event_generate('<<Cut>>')
 
     def undo(self):
         self.editor.edit_undo()
@@ -361,7 +354,7 @@ def set_cascade(menu: Menu, *commands):
         else:
             pass
 
-def dismiss(window):
+def close_window(window):
     window.grab_release()
     window.destroy()
 
